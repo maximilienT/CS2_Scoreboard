@@ -23,7 +23,7 @@ penalty_kills = pd.concat([suicides, team_kills], ignore_index=True)
 # Calculates each players number of team kills and suicides
 penalty_kills = penalty_kills.groupby('attacker_id_fixed').size()
 
-# Subtracts team kills and suicides from players total kill counts. Use .sub since original dfs didnt have matching index (attacker_ids)
+# Subtracts team kills and suicides from players total kill counts. Use .sub since original dfs didnt have matching index (attacker_ids). Done because in game suicides and team kills should take away from your total kill counter.
 final_kills = kills.sub(penalty_kills,fill_value=0).rename('kills')
 
 # Group by player_id and gets number of rows as deaths as each player_id event in this context is a death
