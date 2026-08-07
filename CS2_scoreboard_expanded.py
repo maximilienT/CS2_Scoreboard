@@ -19,8 +19,28 @@ df['kill_dist'] = df.apply(
 
 
 
-# Group by attacker_id and gets number of rows as kills as each attacker event is a kill
-kills = df.groupby('attacker_id_fixed').size().rename("kills")
+# Kills are only credited for killing an enemy. notna() drops the planted_c4
+# deaths outright rather than relying on NaN comparing unequal to everything.
+enemy_kills = df[(df['attacker_team_code'] != df['player_team_code'])
+                & df['attacker_id_fixed'].notna()]
+
+# If player_id and attacker_id match this is a suicide
+suicides = df[df['player_id_fixed'] == df['attacker_id_fixed']]
+
+# Matching team codes with differing ids is a team kill. The id check is what
+# keeps suicides, which also share a team code, out of this group.
+team_kills = df[(df['player_team_code'] == df['attacker_team_code'])
+                & (df['player_id_fixed'] != df['attacker_id_fixed'])]
+
+kills = enemy_kills.groupby('attacker_id_fixed').size().rename("kills")
+
+penalty_rows = pd.concat([suicides, team_kills], ignore_index=True)
+
+penalty_kills = penalty_rows.groupby('attacker_id_fixed').size()
+
+# Deduct suicides and team kills, since in game both take away from your kill counter.
+# Use .sub since the two series don't share an index (not every killer has a penalty).
+final_kills = kills.sub(penalty_kills, fill_value=0).rename('kills')
 
 # Group by player_id and gets number of rows as deaths as each player_id event in this context is a death
 deaths = df.groupby('player_id_fixed').size().rename("deaths")
@@ -32,11 +52,16 @@ assists = df.groupby('assister_id_fixed').size().rename("assists")
 # Group by attacker_id and gets total number of headshot kills, Then used to calculate percentage of kills as headshots
 headshots = df.groupby('attacker_id_fixed')['is_headshot'].sum().rename("headshots")
 hs_kill_percent = round(
-    100*(headshots/kills).rename("Headshot kill %")
+    100*(headshots/final_kills).rename("Headshot kill %")
     ,1)
 
 # Group by round number to find if one player got an ace that round
+#FIX THIS, KILLS NOT RIGHT
 kills_per_round = df.groupby(['round','attacker_id_fixed']).size()
+assists_per_round = df.groupby(['round','assister_id_fixed']).size()
+death_round = df.groupby(['round','player_id_fixed']).size()
+
+
 aces = (kills_per_round == 5).groupby('attacker_id_fixed').sum().rename('aces')
 
 # Group by attacker_id and find the most common weapon used for kills
@@ -56,13 +81,12 @@ open_frag = (df.loc[
 
 # Trade window of ~5 seconds is 320 ticks
 trade_window = 320
-# Trade counter object
-player_ids = df['player_id_fixed'].unique().tolist()
-trade_counter = pd.DataFrame(index=player_ids)
-trade_counter['trade kills'] = 0
+# Full player and round lists, used to reindex so zero-trade players/rounds are not dropped
+player_ids = sorted(df['player_id_fixed'].unique())
+rounds = sorted(df['round'].unique())
 
 # Deaths that are still recent enough to be traded, oldest first
-recent_deaths = []
+trade_events, recent_deaths = [], []
 
 # Trade kills For loop
 # Each row is a kill that might avenge one of the recent deaths
@@ -76,16 +100,29 @@ for _, row in df.iterrows():
     for i, dead in enumerate(recent_deaths):
         if row.player_id_fixed == dead.attacker_id_fixed:
             if row.attacker_team_code == dead.player_team_code:
-                trade_counter.loc[row.attacker_id_fixed, 'trade kills'] += 1
-                del recent_deaths[
-                    i]  # a death can only be traded once
+                trade_events.append({
+                    'round': row['round'],
+                    'tick': row.tick,
+                    'avenger': int(row.attacker_id_fixed),
+                    'teammate_traded': int(dead.player_id_fixed),
+                    'killer_traded': int(row.player_id_fixed),
+                    'ticks_to_trade': int(row.tick - dead.tick),
+                })
+                del recent_deaths[i]
                 break
 
     recent_deaths.append(row)
 
+trades = pd.DataFrame(trade_events)
+
+# Scoreboard column
+trade_kills = trades.groupby('avenger').size().rename('trade kills')
+
+# Per round
+trades_per_round = trades.groupby('round').size().reindex(rounds, fill_value=0)
 
 # Concat all tabulated fields together to get scoreboard. fillna(0) handles players with either no kill or deaths
-scoreboard = pd.concat([kills, deaths, assists, aces, open_frag, trade_counter], axis=1).fillna(0).astype(int)
+scoreboard = pd.concat([final_kills, deaths, assists, aces, open_frag, trade_kills], axis=1).fillna(0).astype(int)
 scoreboard['longest kill distance'] = longest_kill_dist
 scoreboard['best weapon'] = best_weapon
 scoreboard['Headshot kill %'] = hs_kill_percent
