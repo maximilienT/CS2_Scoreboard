@@ -52,8 +52,8 @@ open_frag = (df.loc[
     , ['round', 'attacker_id_fixed']]
              .groupby('attacker_id_fixed').size().rename("opening frags"))
 
-# Set the first previous to compare to be the very first row
-prev_row = df.iloc[0]
+
+
 # Trade window of ~5 seconds is 320 ticks
 trade_window = 320
 # Trade counter object
@@ -61,24 +61,32 @@ player_ids = df['player_id_fixed'].unique().tolist()
 trade_counter = pd.DataFrame(index=player_ids)
 trade_counter['trade kills'] = 0
 
+# Deaths that are still recent enough to be traded, oldest first
+recent_deaths = []
+
 # Trade kills For loop
-# Starts by looking at 2nd row in data and then iterates onward
-# Confirms kill is within trade window of ~5 seconds
-# Confirms previous attacker has now died
-# Confirms new attacker and previous victim are on the same team to not count tk
-# Then sets the previous row to the current row and continues
-for index, row in df.iloc[1:].iterrows():
-    if row['round'] == prev_row['round']:
-        if row.tick - trade_window < prev_row.tick:
-            if row.player_id_fixed == prev_row.attacker_id_fixed:
-                if row.attacker_team_code == prev_row.player_team_code:
-                    trade_counter.loc[row.attacker_id_fixed,'trade kills'] += 1
-    prev_row = row.copy()
+# Each row is a kill that might avenge one of the recent deaths
+# Drops deaths that have aged out of the window or belong to an earlier round
+# Confirms the current victim is the killer from that earlier death
+# Confirms the avenger and the earlier victim are on the same team to not count tk
+for _, row in df.iterrows():
+    recent_deaths = [d for d in recent_deaths
+                     if d['round'] == row['round'] and row.tick - d.tick < trade_window]
 
-print(trade_counter)
+    for i, dead in enumerate(recent_deaths):
+        if row.player_id_fixed == dead.attacker_id_fixed:
+            if row.attacker_team_code == dead.player_team_code:
+                trade_counter.loc[row.attacker_id_fixed, 'trade kills'] += 1
+                del recent_deaths[
+                    i]  # a death can only be traded once
+                break
 
-# Concat kills and deaths together to get scoreboard. fillna(0) handles players with either no kill or deaths
-scoreboard = pd.concat([kills, deaths, assists, longest_kill_dist, aces, open_frag], axis=1).fillna(0).astype(int)
+    recent_deaths.append(row)
+
+
+# Concat all tabulated fields together to get scoreboard. fillna(0) handles players with either no kill or deaths
+scoreboard = pd.concat([kills, deaths, assists, aces, open_frag, trade_counter], axis=1).fillna(0).astype(int)
+scoreboard['longest kill distance'] = longest_kill_dist
 scoreboard['best weapon'] = best_weapon
 scoreboard['Headshot kill %'] = hs_kill_percent
 
@@ -93,7 +101,7 @@ scoreboard['K/D Ratio'] = round(scoreboard['kills'] / scoreboard['deaths'],2)
 scoreboard = scoreboard.sort_values(by=['kills', 'deaths','player_id_fixed'], ascending=[False, False, False])
 
 # Final organization of scoreboard
-scoreboard = scoreboard[['player_id_fixed','kills','deaths','assists','K/D Ratio','Headshot kill %','aces','opening frags','best weapon', 'longest kill distance']]
+scoreboard = scoreboard[['player_id_fixed','kills','deaths', 'K/D Ratio','assists', 'trade kills','Headshot kill %','aces','opening frags','best weapon', 'longest kill distance']]
 
 with pd.option_context('display.max_rows', None, 'display.max_columns', None):
     print(scoreboard)
