@@ -52,9 +52,30 @@ open_frag = (df.loc[
     , ['round', 'attacker_id_fixed']]
              .groupby('attacker_id_fixed').size().rename("opening frags"))
 
+# Set the first previous to compare to be the very first row
+prev_row = df.iloc[0]
+# Trade window of ~5 seconds is 320 ticks
+trade_window = 320
+# Trade counter object
+player_ids = df['player_id_fixed'].unique().tolist()
+trade_counter = pd.DataFrame(index=player_ids)
+trade_counter['trade kills'] = 0
 
-# Trade kills
+# Trade kills For loop
+# Starts by looking at 2nd row in data and then iterates onward
+# Confirms kill is within trade window of ~5 seconds
+# Confirms previous attacker has now died
+# Confirms new attacker and previous victim are on the same team to not count tk
+# Then sets the previous row to the current row and continues
+for index, row in df.iloc[1:].iterrows():
+    if row['round'] == prev_row['round']:
+        if row.tick - trade_window < prev_row.tick:
+            if row.player_id_fixed == prev_row.attacker_id_fixed:
+                if row.attacker_team_code == prev_row.player_team_code:
+                    trade_counter.loc[row.attacker_id_fixed,'trade kills'] += 1
+    prev_row = row.copy()
 
+print(trade_counter)
 
 # Concat kills and deaths together to get scoreboard. fillna(0) handles players with either no kill or deaths
 scoreboard = pd.concat([kills, deaths, assists, longest_kill_dist, aces, open_frag], axis=1).fillna(0).astype(int)
