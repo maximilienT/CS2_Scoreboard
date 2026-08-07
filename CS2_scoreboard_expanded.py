@@ -18,8 +18,18 @@ df['kill_dist'] = df.apply(
 # Group by attacker_id and gets number of rows as kills as each attacker event is a kill
 kills = df.groupby('attacker_id_fixed').size().rename("kills")
 
+# Group by attacker_id and gets total number of headshot kills, Then used to calculate percentage of kills as headshots
+headshots = df.groupby('attacker_id_fixed')['is_headshot'].sum().rename("headshots")
+hs_kill_percent = round(
+    100*(headshots/kills).rename("Headshot kill %")
+    ,1)
+
+# Group by round number to find if one player got an ace that round
+kills_per_round = df.groupby(['round','attacker_id_fixed']).size()
+aces = (kills_per_round == 5).groupby('attacker_id_fixed').sum().rename('aces')
+
 # Group by attacker_id and find the most common weapon used for kills
-best_weapon = df.groupby('attacker_id_fixed')['weapon_name'].agg(lambda x: x.mode().iat[0]).rename('best weapon')
+best_weapon = df.groupby('attacker_id_fixed')['weapon_name'].agg(lambda x: x.mode().iloc[0]).rename('best weapon')
 
 # Group by player_id and gets number of rows as deaths as each player_id event in this context is a death
 deaths = df.groupby('player_id_fixed').size().rename("deaths")
@@ -31,8 +41,9 @@ assists = df.groupby('assister_id_fixed').size().rename("assists")
 longest_kill_dist = df.groupby('attacker_id_fixed')['kill_dist'].max().rename("longest kill distance")
 
 # Concat kills and deaths together to get scoreboard. fillna(0) handles players with either no kill or deaths
-scoreboard = pd.concat([kills, deaths, assists, longest_kill_dist], axis=1).fillna(0).astype(int)
+scoreboard = pd.concat([kills, deaths, assists, longest_kill_dist, aces], axis=1).fillna(0).astype(int)
 scoreboard['best weapon'] = best_weapon
+scoreboard['Headshot kill %'] = hs_kill_percent
 
 # Gets index as its own column, name it player_id_fixed, and cast to int (source column is float due to NaN rows)
 scoreboard = scoreboard.reset_index().rename(columns={'index':'player_id_fixed'})
@@ -42,10 +53,10 @@ scoreboard['player_id_fixed'] = scoreboard['player_id_fixed'].astype(int)
 scoreboard['K/D Ratio'] = round(scoreboard['kills'] / scoreboard['deaths'],2)
 
 # Sort by kills, deaths, player_id desc
-scoreboard = scoreboard.sort_values(by=['kills', 'deaths', 'assists', 'K/D Ratio','longest kill distance','player_id_fixed'], ascending=[False, False, False, False, False, False])
+scoreboard = scoreboard.sort_values(by=['kills', 'deaths','player_id_fixed'], ascending=[False, False, False])
 
 # Final organization of scoreboard
-scoreboard = scoreboard[['player_id_fixed','kills','deaths','assists','K/D Ratio','best weapon', 'longest kill distance']]
+scoreboard = scoreboard[['player_id_fixed','kills','deaths','assists','aces', 'K/D Ratio','Headshot kill %','best weapon', 'longest kill distance']]
 
 with pd.option_context('display.max_rows', None, 'display.max_columns', None):
     print(scoreboard)
