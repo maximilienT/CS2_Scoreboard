@@ -256,7 +256,7 @@ scoreboard = scoreboard[['player_id_fixed', 'kills', 'deaths', 'K/D Ratio', 'ass
                          'kast %', 'trade kills', 'Headshot kill %', 'aces',
                          'opening frags', 'best weapon', 'longest kill distance']]
 
-with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-    print(scoreboard)
+# with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+#     print(scoreboard)
 # Export the scoreboard to csv
-# scoreboard.to_csv("scoreboard.csv", index=False)
+scoreboard.to_csv("scoreboard_extended.csv", index=False)
