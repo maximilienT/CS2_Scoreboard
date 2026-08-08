@@ -9,10 +9,6 @@ Scoring rules applied, matching the in-game CS2 scoreboard:
   - Bomb deaths (planted_c4, no attacker) credit nobody.
   - Suicides and team kills credit nobody and deduct 1 from the killer.
   - Every row is a death for the victim, including bomb deaths and suicides.
-
-The deduction is an interpretation; the task states only that team codes
-matter. In this match it affects players 7, 8 and 10. Dropping the .sub()
-call below reverts to plain enemy-kill counts.
 """
 
 import pandas as pd
